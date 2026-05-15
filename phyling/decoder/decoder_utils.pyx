@@ -247,9 +247,9 @@ cpdef void setup_header(dict header):
     header["__setup__"] = True
 
 
-FILTER_KEEP = 1      # data is valid, keep it
-FILTER_SKIP = 0      # expected/normal skip (e.g. no GPS fix), not an error
-FILTER_ERROR = -1    # value out of valid range, likely corrupted
+DEF FILTER_KEEP = 1      # data is valid, keep it
+DEF FILTER_SKIP = 0      # expected/normal skip (e.g. no GPS fix), not an error
+DEF FILTER_ERROR = -1    # value out of valid range, likely corrupted
 
 
 cpdef int filterValTooHighBeforeCalib(object curMod, object modValNamed, object modVal, str curModName):
@@ -361,12 +361,6 @@ cpdef object loadOne(dict header, char * content, int curPos, dict calib_dict=No
                 logSpam.warning(f"[Time recalibration] Epoch is not valid ({epochUs / 1e6}s)")
                 missingByteSize += 1
                 continue
-            # if recalibration is for more than 7 days, cancel it
-            # if header["description"]["epoch"] > 1420070400:
-            #     if epochUs / 1e6 < header["description"]["epoch"] - 604800 or epochUs / 1e6 > header["description"]["epoch"] + 604800:
-            #         logSpam.warning(f"[Time recalibration] Epoch is not valid ({epochUs / 1e6}s), cannot recalibrate more than 7 days")
-            #         missingByteSize += 1
-            #         continue
             if not HEADER_UPDATE_DICT in header:
                 header[HEADER_UPDATE_DICT] = {}
             header[HEADER_UPDATE_DICT]["epochUs"] = epochUs
@@ -443,7 +437,7 @@ cpdef object loadOne(dict header, char * content, int curPos, dict calib_dict=No
             missingByteSize += 1
     if missingByteSize > 0:
         if data:
-            msg = f"Missing some data ({missingByteSize} bytes at {modVal['T']}s)"
+            msg = f"Missing some data ({missingByteSize} bytes at {modVal.get('T', '?')}s)"
         else:
             msg = f"Missing some data ({missingByteSize} bytes from position {curPos})"
         logSpam.warning(msg)
