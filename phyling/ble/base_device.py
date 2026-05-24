@@ -144,6 +144,7 @@ class BaseDevice(ABC):
         self.startBLETime = 0
         self.startPCtime = 0
         self._ble_disconnected = False
+        self._data_callback = None
 
     def get_name(self) -> str:
         """
@@ -185,6 +186,40 @@ class BaseDevice(ABC):
                 offset = cal.get("offset", 0)
                 df[col] = coef * (df[col] + offset)
         return df
+
+    def on_data(self, callback) -> None:
+        """
+        Register a callback invoked with each new batch of sensor rows as they arrive.
+
+        The callback receives a DataFrame with columns: T (seconds relative to recording
+        start) and all sensor columns with calibration applied.
+
+        :param callback: Callable[[pd.DataFrame], None]
+        """
+        self._data_callback = callback
+
+    def get_latest(self, n: int) -> Union[DataFrame, None]:
+        """
+        Return the last n live rows with calibration applied and a relative T column.
+
+        Useful for polling-based real-time access while recording is running.
+        T is seconds elapsed since the recording started.
+
+        :param n: Number of rows to return
+        :return: DataFrame or None if no data has been collected yet
+        """
+        if self.df is None or len(self.df) == 0:
+            return None
+        rows = self.df.iloc[-n:].copy()
+        for col, cal in self.calibration.items():
+            if col in rows.columns:
+                coef = cal.get("coef", 1)
+                offset = cal.get("offset", 0)
+                rows[col] = coef * (rows[col] + offset)
+        rows["T"] = rows["timestamp_nano"] - self.startPCtime
+        sensor_cols = self.config.get("data", [])
+        available = ["T"] + [c for c in sensor_cols if c in rows.columns]
+        return rows[available].reset_index(drop=True)
 
     def get_calib(self) -> dict:
         """Return the current calibration dict."""
@@ -262,6 +297,18 @@ class BaseDevice(ABC):
             self.df.loc[len(self.df)] = line
             self.nbDatas += 1
             current_index += self._oneDataSize
+
+        if self._data_callback is not None:
+            new_rows = self.df.iloc[-nbPackets:].copy()
+            for col, cal in self.calibration.items():
+                if col in new_rows.columns:
+                    coef = cal.get("coef", 1)
+                    offset = cal.get("offset", 0)
+                    new_rows[col] = coef * (new_rows[col] + offset)
+            new_rows["T"] = new_rows["timestamp_nano"] - self.startPCtime
+            sensor_cols = self.config.get("data", [])
+            available = ["T"] + [c for c in sensor_cols if c in new_rows.columns]
+            self._data_callback(new_rows[available].reset_index(drop=True))
 
     async def _run_ble_client(self, duration: Union[int, None]) -> None:
         """
