@@ -1,5 +1,6 @@
 import asyncio
 import struct
+import threading
 import time
 from abc import ABC
 from abc import abstractmethod
@@ -402,11 +403,13 @@ class BaseDevice(ABC):
                 self._conn_id += 1
                 await asyncio.sleep(1.0)
 
-    def run(self, duration: Union[int, None] = None) -> None:
+    def run(self, duration: Union[int, None] = None, realtime: bool = False) -> None:
         """
         Connect to the device and start recording data.
 
         :param duration: Duration in seconds (None = record indefinitely)
+        :param realtime: If True, run BLE streaming in a background daemon thread and return
+                         immediately so the caller can drive a live plot on the main thread.
         """
         self.disconnect = False
         if not self.address:
@@ -416,6 +419,15 @@ class BaseDevice(ABC):
                 f"[{self.get_name()}] Device not found. Make sure it is turned on and within range."
             )
             return
+        if realtime:
+            self._stream_thread = threading.Thread(
+                target=self._blocking_run, args=(duration,), daemon=True
+            )
+            self._stream_thread.start()
+            return
+        self._blocking_run(duration)
+
+    def _blocking_run(self, duration: Union[int, None]) -> None:
         try:
             asyncio.run(self._run_ble_client(duration))
         except KeyboardInterrupt:

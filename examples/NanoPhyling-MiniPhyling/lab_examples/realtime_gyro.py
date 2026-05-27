@@ -1,4 +1,4 @@
-import threading
+import datetime
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import numpy as np
@@ -92,9 +92,29 @@ def update(_frame):
 
 ani = animation.FuncAnimation(fig, update, interval=80, blit=False, cache_frame_data=False)
 plt.tight_layout()
+fig.text(0.5, 0.01, 'Press Q to stop recording and save CSV', ha='center', fontsize=9, color='gray')
 
-t_stream = threading.Thread(target=device.run, kwargs={'duration': None}, daemon=True)
-t_stream.start()
-print('Streaming started. Close the plot window to stop.')
 
-plt.show()
+def on_key(event):
+    if event.key == 'q':
+        device.disconnect = True
+        plt.close()
+
+
+fig.canvas.mpl_connect('key_press_event', on_key)
+
+device.run(duration=None, realtime=True)
+print('Streaming started. Press Q or close the window to stop.')
+
+plt.show()  # blocks until window is closed
+device.disconnect = True
+device._stream_thread.join(timeout=3)
+
+df = device.get_df()
+if df is not None and len(df) > 0:
+    ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    path = f'recording_{ts}.csv'
+    df.to_csv(path, index=False)
+    print(f'Saved {len(df)} rows → {path}')
+else:
+    print('No data to save.')
