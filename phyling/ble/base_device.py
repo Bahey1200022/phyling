@@ -412,6 +412,14 @@ class BaseDevice(ABC):
                          immediately so the caller can drive a live plot on the main thread.
         """
         self.disconnect = False
+        if realtime:
+            # Defer scan + connect into the thread so no asyncio.run() is called
+            # on the caller's thread (required when running inside Jupyter).
+            self._stream_thread = threading.Thread(
+                target=self._blocking_run, args=(duration,), daemon=True
+            )
+            self._stream_thread.start()
+            return
         if not self.address:
             self.address = find_device(name=self.ble_name)
         if not self.address:
@@ -419,15 +427,16 @@ class BaseDevice(ABC):
                 f"[{self.get_name()}] Device not found. Make sure it is turned on and within range."
             )
             return
-        if realtime:
-            self._stream_thread = threading.Thread(
-                target=self._blocking_run, args=(duration,), daemon=True
-            )
-            self._stream_thread.start()
-            return
         self._blocking_run(duration)
 
     def _blocking_run(self, duration: Union[int, None]) -> None:
+        if not self.address:
+            self.address = find_device(name=self.ble_name)
+        if not self.address:
+            print(
+                f"[{self.get_name()}] Device not found. Make sure it is turned on and within range."
+            )
+            return
         try:
             asyncio.run(self._run_ble_client(duration))
         except KeyboardInterrupt:
