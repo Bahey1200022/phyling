@@ -10,7 +10,7 @@ WINDOW_S = 5     # seconds of history shown
 RATE     = 200   # Hz
 MAX_PTS  = WINDOW_S * RATE
 
-CHANNELS = ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z']
+CHANNELS = ['acc_x', 'acc_y', 'acc_z', 'gyro_x', 'gyro_y', 'gyro_z', 'mag_x', 'mag_y', 'mag_z']
 
 t_buf  = deque(maxlen=MAX_PTS)
 bufs   = {ch: deque(maxlen=MAX_PTS) for ch in CHANNELS}
@@ -24,13 +24,13 @@ def on_data(df):
 
 
 device = NanoPhyling(
-    ble_name='NanoPhyling_38',
+    ble_name='NanoPhyling_40',
     config={'rate': RATE, 'data': CHANNELS},
 )
 device.on_data(on_data)
 print('Device configured.')
 
-fig, (ax_acc, ax_gyro) = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
+fig, (ax_acc, ax_gyro, ax_mag) = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
 
 COLORS = {'x': 'steelblue', 'y': 'tomato', 'z': 'seagreen'}
 
@@ -50,13 +50,24 @@ gyro_lines = {
 }
 ax_gyro.axhline(0, color='gray', linewidth=0.5, linestyle='--')
 ax_gyro.set_ylabel('Angular velocity  (°/s)')
-ax_gyro.set_xlabel('Time  (s)')
 ax_gyro.set_title('Real-time — Gyroscope (gyro_x / y / z)')
 ax_gyro.legend(loc='upper right', fontsize=9)
 ax_gyro.grid(True, alpha=0.25)
 
+mag_lines = {
+    ax: ax_mag.plot([], [], color=COLORS[ax], linewidth=0.9, label=f'mag_{ax}')[0]
+    for ax in ('x', 'y', 'z')
+}
+ax_mag.axhline(0, color='gray', linewidth=0.5, linestyle='--')
+ax_mag.set_ylabel('Magnetic field  (µT)')
+ax_mag.set_xlabel('Time  (s)')
+ax_mag.set_title('Real-time — Magnetometer (mag_x / y / z)')
+ax_mag.legend(loc='upper right', fontsize=9)
+ax_mag.grid(True, alpha=0.25)
+
 MARGIN_ACC  = 1.0   # m/s²
 MARGIN_GYRO = 50.0  # °/s
+MARGIN_MAG  = 10.0  # µT
 
 
 def _safe_lim(vals, margin):
@@ -68,7 +79,7 @@ def _safe_lim(vals, margin):
     return lo - margin, hi + margin
 
 
-all_lines = list(acc_lines.values()) + list(gyro_lines.values())
+all_lines = list(acc_lines.values()) + list(gyro_lines.values()) + list(mag_lines.values())
 
 
 def update(_frame):
@@ -76,16 +87,19 @@ def update(_frame):
         return all_lines
     t = np.array(t_buf)
 
-    acc_vals = np.concatenate([np.array(bufs[f'acc_{ax}']) for ax in ('x', 'y', 'z')])
+    acc_vals  = np.concatenate([np.array(bufs[f'acc_{ax}'])  for ax in ('x', 'y', 'z')])
     gyro_vals = np.concatenate([np.array(bufs[f'gyro_{ax}']) for ax in ('x', 'y', 'z')])
+    mag_vals  = np.concatenate([np.array(bufs[f'mag_{ax}'])  for ax in ('x', 'y', 'z')])
 
     for ax in ('x', 'y', 'z'):
         acc_lines[ax].set_data(t, np.array(bufs[f'acc_{ax}']))
         gyro_lines[ax].set_data(t, np.array(bufs[f'gyro_{ax}']))
+        mag_lines[ax].set_data(t, np.array(bufs[f'mag_{ax}']))
 
     ax_acc.set_xlim(t[0], t[-1])
     ax_acc.set_ylim(*_safe_lim(acc_vals, MARGIN_ACC))
     ax_gyro.set_ylim(*_safe_lim(gyro_vals, MARGIN_GYRO))
+    ax_mag.set_ylim(*_safe_lim(mag_vals, MARGIN_MAG))
 
     return all_lines
 
